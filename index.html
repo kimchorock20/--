@@ -2,23 +2,51 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>셔틀버스 거리 / 정거장 계산 데모</title>
+  <title>인천대 셔틀버스 도착 안내</title>
   <style>
     body {
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       max-width: 600px;
-      margin: 30px auto;
+      margin: 20px auto;
       padding: 0 16px;
       line-height: 1.5;
     }
     h1 {
-      font-size: 1.4rem;
-      margin-bottom: 0.5rem;
+      font-size: 1.6rem;
+      margin-bottom: 0.3rem;
     }
-    label {
-      display: block;
-      margin-top: 10px;
-      font-weight: 600;
+    .small {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-bottom: 1rem;
+    }
+    .card {
+      padding: 14px;
+      border-radius: 8px;
+      background: #f3f4f6;
+      margin-bottom: 12px;
+    }
+    .label {
+      font-size: 0.9rem;
+      color: #6b7280;
+    }
+    .big {
+      font-size: 1.8rem;
+      font-weight: 700;
+      margin: 4px 0;
+    }
+    .mid {
+      font-size: 1.1rem;
+      margin: 2px 0;
+    }
+    .warn {
+      color: #b91c1c;
+      font-size: 0.9rem;
+    }
+    .row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
     }
     input {
       width: 100%;
@@ -26,71 +54,66 @@
       margin-top: 4px;
       box-sizing: border-box;
     }
-    button {
+    label {
+      display: block;
       margin-top: 10px;
-      padding: 8px 12px;
-      border: none;
-      cursor: pointer;
-      border-radius: 4px;
-    }
-    button.main {
-      background: #2563eb;
-      color: white;
-    }
-    button.sub {
-      background: #e5e7eb;
-      margin-right: 6px;
-    }
-    #output {
-      margin-top: 20px;
-      padding: 12px;
-      border-radius: 4px;
-      background: #f3f4f6;
-      min-height: 40px;
-      white-space: pre-line;
-    }
-    small {
-      color: #6b7280;
+      font-weight: 600;
     }
   </style>
 </head>
 <body>
-  <h1>셔틀버스 거리 / 정거장 계산 데모</h1>
-  <p><small>두 기기의 위치(휴대폰, 아이패드)를 넣어서 거리와 남은 정거장을 계산하는 예제입니다.</small></p>
+  <h1>인천대 셔틀버스 도착 안내</h1>
+  <div class="small">
+    - 버스에 있는 기기에서 <b>bus.html</b>을 실행해 두면,<br />
+    - 여기에서 인천대입구역 기준 <b>거리 / 예상 도착 시간</b>이 실시간으로 갱신됩니다.
+  </div>
 
-  <!-- A: 예를 들어 "셔틀버스(아이패드)" 위치 -->
-  <label>기기 A 위도 (예: 아이패드 / 셔틀버스)</label>
-  <input id="latA" type="number" placeholder="위도 (예: 37.123456)" step="0.000001" />
-  <label>기기 A 경도</label>
-  <input id="lonA" type="number" placeholder="경도 (예: 126.123456)" step="0.000001" />
-  <button class="sub" type="button" onclick="setMyLocation('A')">현재 내 위치를 A로 설정</button>
+  <div class="card">
+    <div class="label">현재 버스 위치 기준</div>
+    <div class="big" id="distanceText">거리 계산 중…</div>
+    <div class="mid" id="etaText"></div>
+    <div class="small" id="lastUpdateText"></div>
+    <div id="staleText" class="warn"></div>
+  </div>
 
-  <!-- B: 예를 들어 "승객(휴대폰)" 위치 -->
-  <label style="margin-top: 16px;">기기 B 위도 (예: 휴대폰 / 정류장)</label>
-  <input id="latB" type="number" placeholder="위도 (예: 37.654321)" step="0.000001" />
-  <label>기기 B 경도</label>
-  <input id="lonB" type="number" placeholder="경도 (예: 126.654321)" step="0.000001" />
-  <button class="sub" type="button" onclick="setMyLocation('B')">현재 내 위치를 B로 설정</button>
+  <div class="card">
+    <div class="label">설정</div>
+    <label>셔틀 평균 속도 (km/h)</label>
+    <input id="speedInput" type="number" value="20" />
+    <div class="small">예: 20km/h → 1km에 약 3분 소요</div>
+  </div>
 
-  <!-- 거리 기준 (한 정거장 거리, 평균 속도) -->
-  <label style="margin-top: 16px;">한 정거장 거리 (미터)</label>
-  <input id="distancePerStop" type="number" value="300" />
-  <small>예: 300m면 0.9km 떨어져 있으면 약 3정거장으로 계산</small>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
-  <label style="margin-top: 16px;">셔틀 예상 속도 (km/h)</label>
-  <input id="speedKmh" type="number" value="20" />
-  <small>예: 20km/h면 1km 이동에 약 3분 걸림</small>
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXj14SdBBcXsuXi4ahcL0cZ8hLlz7qux8",
+      authDomain: "businu-ee617.firebaseapp.com",
+      databaseURL: "https://businu-ee617-default-rtdb.firebaseio.com",
+      projectId: "businu-ee617",
+      storageBucket: "businu-ee617.firebasestorage.app",
+      messagingSenderId: "61289384926",
+      appId: "1:61289384926:web:92de358e13e3d5a0f9ab4f",
+      measurementId: "G-L3YWE01R4L"
+    };
 
-  <button class="main" type="button" onclick="calculate()">계산하기</button>
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
 
-  <div id="output"></div>
+    // 인천대입구역 좌표 (대략)
+    const STATION_LAT = 37.378197;
+    const STATION_LON = 126.632843;
 
-  <script>
-    // 위도/경도 → 거리(m) 계산 (Haversine 공식)
-    function getDistanceMeters(lat1, lon1, lat2, lon2) {
-      const R = 6371000; // 지구 반지름 (m)
-      const toRad = deg => (deg * Math.PI) / 180;
+    const distanceText = document.getElementById("distanceText");
+    const etaText = document.getElementById("etaText");
+    const lastUpdateText = document.getElementById("lastUpdateText");
+    const staleText = document.getElementById("staleText");
+    const speedInput = document.getElementById("speedInput");
 
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000; // m
+      const toRad = d => (d * Math.PI) / 180;
       const dLat = toRad(lat2 - lat1);
       const dLon = toRad(lon2 - lon1);
 
@@ -105,76 +128,47 @@
       return R * c; // meters
     }
 
-    // 브라우저의 현재 위치를 A/B에 넣기
-    function setMyLocation(target) {
-      if (!navigator.geolocation) {
-        alert("이 브라우저에서는 위치 정보를 지원하지 않습니다.");
+    function updateView(data) {
+      if (!data || typeof data.lat !== "number" || typeof data.lon !== "number") {
+        distanceText.textContent = "버스 위치를 아직 받지 못했습니다.";
+        etaText.textContent = "";
+        lastUpdateText.textContent = "";
+        staleText.textContent = "";
         return;
       }
 
-      navigator.geolocation.getCurrentPosition(
-        pos => {
-          const lat = pos.coords.latitude;
-          const lon = pos.coords.longitude;
+      const distanceM = haversine(STATION_LAT, STATION_LON, data.lat, data.lon);
+      const distanceKm = distanceM / 1000;
 
-          if (target === "A") {
-            document.getElementById("latA").value = lat.toFixed(6);
-            document.getElementById("lonA").value = lon.toFixed(6);
-          } else {
-            document.getElementById("latB").value = lat.toFixed(6);
-            document.getElementById("lonB").value = lon.toFixed(6);
-          }
-        },
-        err => {
-          console.error(err);
-          alert("위치 정보를 가져오지 못했습니다: " + err.message);
-        }
-      );
-    }
+      distanceText.textContent = `인천대입구역까지 약 ${distanceM.toFixed(0)} m (${distanceKm.toFixed(2)} km)`;
 
-    function calculate() {
-      const latA = parseFloat(document.getElementById("latA").value);
-      const lonA = parseFloat(document.getElementById("lonA").value);
-      const latB = parseFloat(document.getElementById("latB").value);
-      const lonB = parseFloat(document.getElementById("lonB").value);
-      const distancePerStop = parseFloat(
-        document.getElementById("distancePerStop").value
-      );
-      const speedKmh = parseFloat(document.getElementById("speedKmh").value);
-
-      const output = document.getElementById("output");
-
-      if (
-        isNaN(latA) ||
-        isNaN(lonA) ||
-        isNaN(latB) ||
-        isNaN(lonB) ||
-        isNaN(distancePerStop) ||
-        isNaN(speedKmh)
-      ) {
-        output.textContent = "모든 값을 정확히 입력해 주세요.";
-        return;
-      }
-
-      // 거리(m) 계산
-      const distance = getDistanceMeters(latA, lonA, latB, lonB);
-
-      // 남은 정거장 수
-      const stopsLeft = Math.max(
-        0,
-        Math.round(distance / distancePerStop)
-      );
-
-      // 예상 도착 시간 (분)
-      const distanceKm = distance / 1000;
-      const timeHours = distanceKm / speedKmh; // 시간
+      const speedKmh = parseFloat(speedInput.value) || 20;
+      const timeHours = distanceKm / speedKmh;
       const timeMinutes = timeHours * 60;
 
-      output.textContent =
-        `두 기기 사이 거리: ${distance.toFixed(1)} m\n` +
-        `남은 정거장 수(대략): ${stopsLeft} 정거장\n` +
-        `예상 도착 시간(대략): ${timeMinutes.toFixed(1)} 분`;
+      etaText.textContent = `예상 도착 시간: 약 ${timeMinutes.toFixed(1)} 분`;
+
+      if (data.updatedAt) {
+        const diffSec = (Date.now() - data.updatedAt) / 1000;
+        const timeStr = new Date(data.updatedAt).toLocaleTimeString();
+        lastUpdateText.textContent = `마지막 위치 업데이트: ${timeStr} (약 ${diffSec.toFixed(0)}초 전)`;
+
+        if (diffSec > 60) {
+          staleText.textContent = "⚠ 1분 이상 새 위치가 들어오지 않았습니다. 버스 위치 전송 페이지가 꺼져 있을 수 있습니다.";
+        } else {
+          staleText.textContent = "";
+        }
+      } else {
+        lastUpdateText.textContent = "";
+        staleText.textContent = "";
+      }
     }
+
+    const busRef = ref(db, "bus1");
+    onValue(busRef, (snapshot) => {
+      const data = snapshot.val();
+      updateView(data);
+    });
   </script>
 </body>
 </html>

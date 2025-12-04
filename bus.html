@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>버스 위치 업로드 (운전자용)</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 0 16px;
+      line-height: 1.5;
+    }
+    h1 {
+      font-size: 1.4rem;
+      margin-bottom: 0.2rem;
+    }
+    p {
+      margin: 0.2rem 0;
+    }
+    .status {
+      margin-top: 10px;
+      padding: 10px;
+      border-radius: 6px;
+      background: #f3f4f6;
+    }
+    .small {
+      color: #6b7280;
+      font-size: 0.85rem;
+    }
+    button {
+      margin-top: 12px;
+      padding: 8px 12px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+    }
+  </style>
+</head>
+<body>
+  <h1>버스 위치 업로드 (운전자용)</h1>
+  <p class="small">
+    이 페이지를 버스 안 아이패드나 스마트폰에서 켜 두면<br />
+    GPS 위치가 Firebase로 계속 전송됩니다.
+  </p>
+
+  <button id="startBtn">실시간 위치 전송 시작</button>
+
+  <div class="status" id="statusBox">
+    대기 중…
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
+    import { getDatabase, ref, set } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXj14SdBBcXsuXi4ahcL0cZ8hLlz7qux8",
+      authDomain: "businu-ee617.firebaseapp.com",
+      databaseURL: "https://businu-ee617-default-rtdb.firebaseio.com",
+      projectId: "businu-ee617",
+      storageBucket: "businu-ee617.firebasestorage.app",
+      messagingSenderId: "61289384926",
+      appId: "1:61289384926:web:92de358e13e3d5a0f9ab4f",
+      measurementId: "G-L3YWE01R4L"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    const statusBox = document.getElementById("statusBox");
+    const startBtn = document.getElementById("startBtn");
+
+    let watchId = null;
+
+    function updateStatus(text) {
+      statusBox.textContent = text;
+    }
+
+    function startTracking() {
+      if (!navigator.geolocation) {
+        alert("이 기기에서는 위치 정보를 사용할 수 없습니다.");
+        return;
+      }
+
+      if (watchId !== null) {
+        alert("이미 위치 전송 중입니다.");
+        return;
+      }
+
+      updateStatus("위치 권한을 요청하는 중…");
+
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          const now = Date.now();
+
+          // Firebase에 저장 (bus1 위치)
+          const busRef = ref(db, "bus1");
+          set(busRef, {
+            lat,
+            lon,
+            updatedAt: now
+          });
+
+          const dateStr = new Date(now).toLocaleTimeString();
+          updateStatus(
+            `위치 전송 중\n위도: ${lat.toFixed(6)}, 경도: ${lon.toFixed(6)}\n` +
+            `마지막 업로드: ${dateStr}`
+          );
+        },
+        (err) => {
+          console.error(err);
+          updateStatus("위치 가져오기 실패: " + err.message);
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 3000,
+          timeout: 10000
+        }
+      );
+    }
+
+    startBtn.addEventListener("click", startTracking);
+  </script>
+</body>
+</html>
