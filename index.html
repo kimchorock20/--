@@ -3,81 +3,274 @@
 <head>
   <meta charset="UTF-8" />
   <title>인천대 셔틀 지도 테스트</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Leaflet CSS (지도 라이브러리) -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-sA+zWATbFveLLNqWO2gtiw3HL/lh1giY/Inf1BJ0z14="
-    crossorigin=""
-  />
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <style>
-    * {
-      box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
-    }
     body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       background: #0f172a;
-      color: #f9fafb;
+      color: white;
+      font-family: Pretendard, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      padding: 30px;
     }
-    .app {
-      max-width: 480px;
-      margin: 0 auto;
-      padding: 16px;
-    }
+
     h1 {
-      font-size: 1.4rem;
-      margin: 0 0 8px;
+      font-size: 32px;
+      margin-bottom: 10px;
     }
+
     p {
-      font-size: 0.9rem;
-      color: #9ca3af;
-      margin: 0 0 12px;
+      margin-bottom: 16px;
+      font-size: 15px;
+      color: #cbd5f5;
     }
+
+    #layout {
+      display: flex;
+      gap: 24px;
+      align-items: flex-start;
+    }
+
     #map {
-      width: 100%;
-      height: 300px;
-      border-radius: 12px;
+      width: 750px;
+      height: 480px;
+      border-radius: 15px;
       overflow: hidden;
-      border: 1px solid #1f2937;
+    }
+
+    #infoBox {
+      flex: 1;
+      font-size: 18px;
+      line-height: 1.6;
+      background: rgba(15,23,42,0.9);
+      border-radius: 14px;
+      padding: 18px 20px;
+      border: 1px solid rgba(148,163,184,0.4);
+      box-shadow: 0 14px 35px rgba(15,23,42,0.7);
+      min-width: 260px;
+    }
+
+    #infoTitle {
+      font-weight: 700;
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+
+    .highlight {
+      font-size: 26px;
+      font-weight: bold;
+      color: #38bdf8;
+    }
+
+    .label {
+      font-size: 15px;
+      color: #9ca3af;
+    }
+
+    .value {
+      font-size: 20px;
+      margin-bottom: 4px;
+    }
+
+    .small {
+      font-size: 14px;
+      color: #9ca3af;
+      margin-top: 8px;
+    }
+
+    .status-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      background: rgba(56,189,248,0.15);
+      color: #38bdf8;
+      margin-bottom: 8px;
     }
   </style>
 </head>
+
 <body>
-  <div class="app">
-    <h1>인천대 셔틀 지도 테스트</h1>
-    <p>아래 지도에 인천대입구역이 보이면 지도 기능은 정상입니다.</p>
+  <h1>인천대 셔틀 지도 테스트</h1>
+  <p>버스가 위치를 전송하면 지도에 표시되고, <b>인천대입구역(지하철)</b>까지 거리와 도착 예상 시간이 계산됩니다.</p>
+
+  <div id="layout">
     <div id="map"></div>
+
+    <div id="infoBox">
+      <div class="status-pill" id="pill">대기중</div>
+      <div id="infoTitle">셔틀 위치를 기다리는 중...</div>
+      <div class="label">거리</div>
+      <div class="value"><span id="distanceText">-</span></div>
+      <div class="label">도착 예상</div>
+      <div class="value"><span id="etaText">-</span></div>
+      <div class="small" id="updatedText">최근 업데이트: -</div>
+    </div>
   </div>
 
   <!-- Leaflet JS -->
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-o9N1j7kGStb6QvZ7XL1DgC2dzHNDVxLdB6vxy6p3p3s="
-    crossorigin=""
-  ></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-  <script>
-    // 인천대입구역 대략적인 좌표
-    const STATION_LAT = 37.378197;
-    const STATION_LON = 126.632843;
+  <!-- Firebase + 지도 로직 -->
+  <script type="module">
+    // -------------------------------------------
+    // 1. Firebase 설정 (네가 쓰던 프로젝트 그대로)
+    // -------------------------------------------
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-database.js";
 
-    // 지도 생성
-    const map = L.map("map").setView([STATION_LAT, STATION_LON], 15);
+    const firebaseConfig = {
+      apiKey: "AIzaSyDXj14SdBBcXsuXi4ahcL0cZ8hLlz7qux8",
+      authDomain: "businu-ee617.firebaseapp.com",
+      projectId: "businu-ee617",
+      storageBucket: "businu-ee617.firebasestorage.app",
+      messagingSenderId: "61289384926",
+      appId: "1:61289384926:web:92de358e13e3d5a0f9ab4f",
+      measurementId: "G-L3YWE01R4L"
+    };
 
-    // 타일 레이어 추가 (지도 배경)
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    // -------------------------------------------
+    // 2. 인천대입구역 좌표 (지하철역)
+    //    위도 37.386167, 경도 126.639397
+    // -------------------------------------------
+    const STATION_LAT = 37.386167;
+    const STATION_LON = 126.639397;
+
+    // 지도 초기 중심도 역 기준으로 설정
+    const map = L.map('map').setView([STATION_LAT, STATION_LON], 16);
+
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap"
+      maxZoom: 19
     }).addTo(map);
 
-    // 인천대입구역 마커 추가
-    const stationMarker = L.marker([STATION_LAT, STATION_LON]).addTo(map);
-    stationMarker.bindPopup("인천대입구역").openPopup();
+    // -------------------------------------------
+    // 3. 인천대입구역 마커 (노랑 테두리 + 파랑 내부)
+    // -------------------------------------------
+    const stationMarker = L.circleMarker([STATION_LAT, STATION_LON], {
+      radius: 12,
+      color: "#FFD400",   // 노랑 테두리
+      weight: 4,
+      fillColor: "#1D4ED8", // 파랑 내부
+      fillOpacity: 1
+    }).addTo(map);
+
+    stationMarker.bindPopup("인천대입구역 (지하철)");
+
+    // -------------------------------------------
+    // 4. 셔틀버스 빨간 버스 아이콘
+    // -------------------------------------------
+    const busIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/61/61088.png", // 빨간 버스 아이콘
+      iconSize: [38, 38],
+      iconAnchor: [19, 19]
+    });
+
+    let busMarker = null;
+    let firstFitDone = false;
+
+    // -------------------------------------------
+    // 5. 거리 계산 (Haversine)
+    // -------------------------------------------
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371e3; // 지구 반지름 (m)
+      const toRad = x => (x * Math.PI) / 180;
+
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) ** 2;
+
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    // -------------------------------------------
+    // 6. UI 업데이트 함수
+    // -------------------------------------------
+    const pill = document.getElementById("pill");
+    const infoTitle = document.getElementById("infoTitle");
+    const distanceText = document.getElementById("distanceText");
+    const etaText = document.getElementById("etaText");
+    const updatedText = document.getElementById("updatedText");
+
+    function setWaitingUI() {
+      pill.textContent = "대기중";
+      pill.style.background = "rgba(148,163,184,0.15)";
+      pill.style.color = "#e5e7eb";
+      infoTitle.textContent = "셔틀 위치를 기다리는 중...";
+      distanceText.textContent = "-";
+      etaText.textContent = "-";
+      updatedText.textContent = "최근 업데이트: -";
+    }
+
+    // 최초 상태
+    setWaitingUI();
+
+    // -------------------------------------------
+    // 7. Firebase에서 bus1 경로 실시간 구독
+    //    구조 예시: bus1/{ lat, lon, updatedAt, speed 등 }
+    // -------------------------------------------
+    onValue(ref(db, "bus1"), (snapshot) => {
+      const data = snapshot.val();
+      if (!data) {
+        setWaitingUI();
+        return;
+      }
+
+      const lat = data.lat;
+      const lon = data.lon;
+      const updatedAt = data.updatedAt || Date.now();
+
+      if (typeof lat !== "number" || typeof lon !== "number") {
+        setWaitingUI();
+        return;
+      }
+
+      // 셔틀 버스 마커 생성/업데이트
+      if (!busMarker) {
+        busMarker = L.marker([lat, lon], { icon: busIcon }).addTo(map);
+
+        // 처음 한 번은 역 + 버스 두 점이 화면에 다 나오도록 맞추기
+        const group = L.featureGroup([stationMarker, busMarker]);
+        map.fitBounds(group.getBounds().pad(0.3));
+        firstFitDone = true;
+      } else {
+        busMarker.setLatLng([lat, lon]);
+        if (!firstFitDone) {
+          const group = L.featureGroup([stationMarker, busMarker]);
+          map.fitBounds(group.getBounds().pad(0.3));
+          firstFitDone = true;
+        }
+      }
+
+      // 거리 & 도착 예상 시간 계산
+      const distance = getDistance(lat, lon, STATION_LAT, STATION_LON); // m
+      const speed = 5.5; // m/s (대략 20km/h 가정)
+      const etaMin = distance / speed / 60;
+
+      // UI 업데이트
+      pill.textContent = "실시간";
+      pill.style.background = "rgba(56,189,248,0.15)";
+      pill.style.color = "#38bdf8";
+
+      infoTitle.textContent = "셔틀 위치 업데이트됨";
+      distanceText.innerHTML = `<span class="highlight">${distance.toFixed(0)} m</span>`;
+      etaText.innerHTML = `<span class="highlight">${etaMin.toFixed(1)} 분</span>`;
+
+      const t = new Date(updatedAt);
+      updatedText.textContent = `최근 업데이트: ${t.toLocaleTimeString()} 기준`;
+    }, {
+      onlyOnce: false
+    });
   </script>
 </body>
 </html>
