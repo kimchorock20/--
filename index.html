@@ -3,90 +3,176 @@
 <head>
   <meta charset="UTF-8" />
   <title>인천대 셔틀버스 도착 안내</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Leaflet CSS (지도 라이브러리) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-sA+zWATbFveLLNqWO2gtiw3HL/lh1giY/Inf1BJ0z14="
+    crossorigin=""
+  />
+
   <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
     body {
+      margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      max-width: 600px;
-      margin: 20px auto;
-      padding: 0 16px;
-      line-height: 1.5;
+      background: #0f172a;
+      color: #f9fafb;
     }
+
+    .app {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 16px;
+    }
+
     h1 {
-      font-size: 1.6rem;
-      margin-bottom: 0.3rem;
+      font-size: 1.4rem;
+      margin: 0 0 4px;
     }
-    .small {
+
+    .desc {
       font-size: 0.85rem;
-      color: #6b7280;
-      margin-bottom: 1rem;
+      color: #9ca3af;
+      margin-bottom: 10px;
     }
+
+    #map {
+      width: 100%;
+      height: 260px;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #1f2937;
+      margin-bottom: 14px;
+    }
+
     .card {
-      padding: 14px;
-      border-radius: 8px;
-      background: #f3f4f6;
-      margin-bottom: 12px;
+      background: #111827;
+      border-radius: 12px;
+      padding: 12px 14px;
+      margin-bottom: 10px;
+      border: 1px solid #1f2937;
     }
+
     .label {
-      font-size: 0.9rem;
-      color: #6b7280;
+      font-size: 0.82rem;
+      color: #9ca3af;
+      margin-bottom: 4px;
     }
-    .big {
-      font-size: 1.8rem;
+
+    .eta {
+      font-size: 1.6rem;
       font-weight: 700;
       margin: 4px 0;
     }
-    .mid {
-      font-size: 1.1rem;
+
+    .eta span {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: #9ca3af;
+      margin-left: 4px;
+    }
+
+    .line {
+      font-size: 0.9rem;
       margin: 2px 0;
     }
-    .warn {
-      color: #b91c1c;
-      font-size: 0.9rem;
-    }
-    .row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    input {
-      width: 100%;
-      padding: 6px 8px;
+
+    .sub {
+      font-size: 0.8rem;
+      color: #9ca3af;
       margin-top: 4px;
-      box-sizing: border-box;
     }
+
+    .warn {
+      font-size: 0.8rem;
+      color: #f97373;
+      margin-top: 4px;
+    }
+
     label {
-      display: block;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    input[type="number"] {
+      margin-top: 3px;
+      width: 100%;
+      padding: 7px 9px;
+      border-radius: 8px;
+      border: 1px solid #374151;
+      background: #020617;
+      color: #f9fafb;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    input[type="number"]:focus {
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.4);
+    }
+
+    footer {
       margin-top: 10px;
-      font-weight: 600;
+      font-size: 0.75rem;
+      color: #6b7280;
     }
   </style>
 </head>
 <body>
-  <h1>인천대 셔틀버스 도착 안내</h1>
-  <div class="small">
-    - 버스에 있는 기기에서 <b>bus.html</b>을 실행해 두면,<br />
-    - 여기에서 인천대입구역 기준 <b>거리 / 예상 도착 시간</b>이 실시간으로 갱신됩니다.
+  <div class="app">
+    <h1>인천대 셔틀 도착 안내</h1>
+    <p class="desc">
+      버스(아이패드/폰)에서 <b>bus.html</b>을 열어 위치 전송을 켜 두면,<br />
+      여기에서 인천대입구역 기준 <b>버스 위치 · 거리 · 예상 도착 시간</b>을 볼 수 있습니다.
+    </p>
+
+    <!-- 🗺️ 미니맵 -->
+    <div id="map"></div>
+
+    <!-- ⏱ ETA + 거리 카드 -->
+    <div class="card">
+      <div class="label">현재 버스 상태</div>
+      <div id="etaMain" class="eta">위치 대기 중<span></span></div>
+      <div id="distanceText" class="line"></div>
+      <div id="lastUpdateText" class="sub"></div>
+      <div id="staleText" class="warn"></div>
+    </div>
+
+    <!-- ⚙ 계산 기준 설정 카드 -->
+    <div class="card">
+      <div class="label">도착 시간 계산 기준</div>
+      <label for="speedInput">셔틀 평균 속도 (km/h)</label>
+      <input id="speedInput" type="number" value="20" min="5" max="80" />
+      <div class="sub">
+        예: <b>20km/h</b> → 1km 당 약 <b>3분</b>으로 계산합니다.
+      </div>
+    </div>
+
+    <footer>
+      버스 위치가 1분 이상 업데이트되지 않으면 bus.html이 꺼졌을 수 있습니다.
+    </footer>
   </div>
 
-  <div class="card">
-    <div class="label">현재 버스 위치 기준</div>
-    <div class="big" id="distanceText">거리 계산 중…</div>
-    <div class="mid" id="etaText"></div>
-    <div class="small" id="lastUpdateText"></div>
-    <div id="staleText" class="warn"></div>
-  </div>
+  <!-- Leaflet JS (지도 라이브러리) -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-o9N1j7kGStb6QvZ7XL1DgC2dzHNDVxLdB6vxy6p3p3s="
+    crossorigin=""
+  ></script>
 
-  <div class="card">
-    <div class="label">설정</div>
-    <label>셔틀 평균 속도 (km/h)</label>
-    <input id="speedInput" type="number" value="20" />
-    <div class="small">예: 20km/h → 1km에 약 3분 소요</div>
-  </div>
-
+  <!-- Firebase + 로직 -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-app.js";
     import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/12.6.0/firebase-database.js";
 
+    // 🔥 Firebase 설정 (네 프로젝트 값 그대로 사용)
     const firebaseConfig = {
       apiKey: "AIzaSyDXj14SdBBcXsuXi4ahcL0cZ8hLlz7qux8",
       authDomain: "businu-ee617.firebaseapp.com",
@@ -101,16 +187,40 @@
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
 
-    // 인천대입구역 좌표 (대략)
+    // 📍 인천대입구역 좌표 (대략)
     const STATION_LAT = 37.378197;
     const STATION_LON = 126.632843;
 
+    // DOM 요소
+    const etaMain = document.getElementById("etaMain");
     const distanceText = document.getElementById("distanceText");
-    const etaText = document.getElementById("etaText");
     const lastUpdateText = document.getElementById("lastUpdateText");
     const staleText = document.getElementById("staleText");
     const speedInput = document.getElementById("speedInput");
 
+    // 🗺️ Leaflet 지도 준비
+    let map;
+    let busMarker = null;
+    let stationMarker = null;
+    let mapInitialized = false;
+
+    function initMap() {
+      if (mapInitialized) return;
+
+      mapInitialized = true;
+      map = L.map("map").setView([STATION_LAT, STATION_LON], 15);
+
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(map);
+
+      // 인천대입구역 마커
+      stationMarker = L.marker([STATION_LAT, STATION_LON]).addTo(map);
+      stationMarker.bindPopup("인천대입구역").openPopup();
+    }
+
+    // 🌍 거리 계산 (Haversine)
     function haversine(lat1, lon1, lat2, lon2) {
       const R = 6371000; // m
       const toRad = d => (d * Math.PI) / 180;
@@ -130,31 +240,55 @@
 
     function updateView(data) {
       if (!data || typeof data.lat !== "number" || typeof data.lon !== "number") {
-        distanceText.textContent = "버스 위치를 아직 받지 못했습니다.";
-        etaText.textContent = "";
+        etaMain.innerHTML = "위치 대기 중<span></span>";
+        distanceText.textContent = "";
         lastUpdateText.textContent = "";
         staleText.textContent = "";
         return;
       }
 
-      const distanceM = haversine(STATION_LAT, STATION_LON, data.lat, data.lon);
+      initMap(); // 데이터가 들어오면 지도 초기화
+
+      const lat = data.lat;
+      const lon = data.lon;
+
+      // 🚌 버스 마커 표시/이동
+      if (!busMarker) {
+        busMarker = L.marker([lat, lon], { title: "셔틀버스" }).addTo(map);
+        busMarker.bindPopup("셔틀버스 위치");
+        // 처음엔 역+버스 둘 다 보이도록 맞춰줌
+        const group = L.featureGroup([stationMarker, busMarker]);
+        map.fitBounds(group.getBounds().pad(0.3));
+      } else {
+        busMarker.setLatLng([lat, lon]);
+      }
+
+      // 📏 거리 계산
+      const distanceM = haversine(STATION_LAT, STATION_LON, lat, lon);
       const distanceKm = distanceM / 1000;
 
-      distanceText.textContent = `인천대입구역까지 약 ${distanceM.toFixed(0)} m (${distanceKm.toFixed(2)} km)`;
-
+      // ⏱ ETA 계산
       const speedKmh = parseFloat(speedInput.value) || 20;
       const timeHours = distanceKm / speedKmh;
       const timeMinutes = timeHours * 60;
 
-      etaText.textContent = `예상 도착 시간: 약 ${timeMinutes.toFixed(1)} 분`;
+      if (timeMinutes <= 0.5) {
+        etaMain.innerHTML = "곧 도착<span>(0.5분 이내)</span>";
+      } else {
+        etaMain.innerHTML = `${timeMinutes.toFixed(1)}분 후 도착<span>예상</span>`;
+      }
 
+      distanceText.textContent = `인천대입구역까지 약 ${distanceM.toFixed(0)} m (${distanceKm.toFixed(2)} km)`;
+
+      // ⏱ 업데이트 시각/지연 상태
       if (data.updatedAt) {
         const diffSec = (Date.now() - data.updatedAt) / 1000;
         const timeStr = new Date(data.updatedAt).toLocaleTimeString();
-        lastUpdateText.textContent = `마지막 위치 업데이트: ${timeStr} (약 ${diffSec.toFixed(0)}초 전)`;
+        lastUpdateText.textContent = `마지막 업데이트: ${timeStr} · 약 ${diffSec.toFixed(0)}초 전`;
 
         if (diffSec > 60) {
-          staleText.textContent = "⚠ 1분 이상 새 위치가 들어오지 않았습니다. 버스 위치 전송 페이지가 꺼져 있을 수 있습니다.";
+          staleText.textContent =
+            "⚠ 1분 이상 새 위치가 들어오지 않았습니다. 버스 기기의 bus.html이 꺼져 있을 수 있습니다.";
         } else {
           staleText.textContent = "";
         }
@@ -164,10 +298,17 @@
       }
     }
 
+    // 🔁 Firebase에서 bus1 위치 실시간 구독
     const busRef = ref(db, "bus1");
-    onValue(busRef, (snapshot) => {
+    onValue(busRef, snapshot => {
       const data = snapshot.val();
       updateView(data);
+    });
+
+    // 속도 입력 변경 시 텍스트만 갱신 (실제 ETA는 다음 데이터 들어올 때 재계산)
+    speedInput.addEventListener("change", () => {
+      const v = parseFloat(speedInput.value || 20).toFixed(0);
+      // 별도 표시 텍스트가 필요하면 여기서 추가로 갱신해도 됨
     });
   </script>
 </body>
